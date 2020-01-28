@@ -1,8 +1,8 @@
 import argparse
 import socket
-import time
 import uuid
 import threading
+import pickle
 
 
 class TaskQueue:
@@ -60,7 +60,10 @@ class TaskQueueServer:
         self._timeout = timeout
         self._ip = ip
         self._port = port
-        self._dict_tasks = {}
+        try:
+            self._dict_tasks = pickle.load(open('task_queue1.pkl', 'rb'))
+        except FileNotFoundError:
+            self._dict_tasks = {}
 
     def get_task(self, task: TaskQueue):
         print(f'{task.id} is over')
@@ -74,13 +77,14 @@ class TaskQueueServer:
         if command_list[0] == 'IN':
             return TaskQueue.check_in(command_list[1], command_list[2], self._dict_tasks)
         if command_list[0] == 'SAVE':
-            return ' '.join(command_list[1:])
+            pickle.dump(self._dict_tasks, open('task_queue.pkl', 'wb'))
+            return 'OK'
         task = self._dict_tasks.get(command_list[1], 'NONE')
         if command_list[0] == 'GET':
             return task.get() if task != 'NONE' else task
         if command_list[0] == 'ACK':
             return task.ack() if task != 'NONE' else task
-        return 'ERROR\n'
+        return 'ERROR'
 
     def run(self):
         connection = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
