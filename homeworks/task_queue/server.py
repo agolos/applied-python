@@ -1,6 +1,56 @@
 import argparse
 import socket
 import time
+import uuid
+import threading
+
+
+class TaskQueue:
+
+    def __init__(self, task_params):
+        self._queue = task_params[0]
+        self._length = task_params[1]
+        self._data = task_params[2]
+        self._id = str(uuid.uuid1())
+        self._status = False
+        self._timer: threading.Timer
+
+    @property
+    def id(self):
+        return self._id
+
+    @property
+    def queue(self):
+        return self._queue
+
+    @property
+    def length(self):
+        return self._length
+
+    @property
+    def data(self):
+        return self._data
+
+    def show_status(self):
+        print(f'{self.id} is over')
+        self._status = False
+
+    def ack(self):
+        if self._status == True:
+            self._timer.cancel()
+            self._status = False
+            return 'YES'
+        return 'NO'
+
+    def get(self):
+        self._status = True
+        self._timer = threading.Timer(10.0, self.show_status)
+        self._timer.start()
+        return f'{self.id} {self.length} {self.data}'
+
+    @classmethod
+    def check_in(cls, queue, id, dict_tasks):
+        return 'YES' if dict_tasks.get(queue) is not None and dict_tasks[queue].id == id else 'NO'
 
 
 class TaskQueueServer:
@@ -10,67 +60,40 @@ class TaskQueueServer:
         self._timeout = timeout
         self._ip = ip
         self._port = port
+        self._dict_tasks = {}
 
-    @property
-    def ip(self):
-        return self._ip
+    def get_task(self, task: TaskQueue):
+        print(f'{task.id} is over')
 
-    @property
-    def port(self):
-        return self._port
-
-    @property
-    def path(self):
-        return self._path
-
-    @property
-    def timeout(self):
-        return self._timeout
-
-    @ip.setter
-    def ip(self, value):
-        self._ip = value
-
-    @port.setter
-    def port(self, value):
-        self._port = value
-
-    @path.setter
-    def path(self, value):
-        self._path = value
-
-    @timeout.setter
-    def timeout(self, value):
-        self._timeout
-
-    @classmethod
-    def _get_command(csl, command_str):
-        try:
-            command_list = command_str.decode('utf-8').split()
-        except UnicodeDecodeError:
-            return ''
+    def _get_command(self, command_str):
+        command_list = command_str.decode('utf-8').split()
         if command_list[0] == 'ADD':
-            return ' '.join(command_list[1:])
-        if command_list[0] == 'GET':
-            return ' '.join(command_list[1:])
-        if command_list[0] == 'ACK':
-            return ' '.join(command_list[1:])
+            new_task = TaskQueue(command_list[1:])
+            self._dict_tasks[new_task.queue] = new_task
+            return new_task.id
         if command_list[0] == 'IN':
-            return ' '.join(command_list[1:])
+            return TaskQueue.check_in(command_list[1], command_list[2], self._dict_tasks)
         if command_list[0] == 'SAVE':
             return ' '.join(command_list[1:])
-        return 'invalid command\n'
+        task = self._dict_tasks.get(command_list[1], 'NONE')
+        if command_list[0] == 'GET':
+            return task.get() if task != 'NONE' else task
+        if command_list[0] == 'ACK':
+            return task.ack() if task != 'NONE' else task
+        return 'ERROR\n'
 
     def run(self):
         connection = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         connection.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        # connection.bind((self._ip, self._port))
         connection.bind(('127.0.0.1', 1234))
         connection.listen(10)
         full_msg = b''
         while True:
             current_connection, address = connection.accept()
+            current_connection.recv(21)
             while True:
-                data = current_connection.recv(2048)
+                data = current_connection.recv(1000000)
                 full_msg += data
                 if full_msg.find(b'\xff\xf8') > -1:
                     current_connection.shutdown(1)
@@ -78,9 +101,11 @@ class TaskQueueServer:
                     full_msg = b''
                     break
                 elif full_msg.endswith(b'\r\n'):
-                    current_connection.send(TaskQueueServer._get_command(full_msg).encode())
+                    print(len(full_msg))
+                    print(full_msg)
+                    current_connection.send(self._get_command(full_msg).encode())
+                    current_connection.send('\n\r'.encode())
                     full_msg = b''
-
 
 
 def parse_args():
