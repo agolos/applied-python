@@ -3,6 +3,7 @@ import socket
 import uuid
 import threading
 import pickle
+import datetime
 
 
 class TaskQueue:
@@ -87,17 +88,23 @@ class TaskQueueServer:
         return 'ERROR'
 
     def run(self):
+        with open('log.txt', 'a') as fw:
+            fw.write(f'{datetime.datetime.now()} - Try to connect to {self._ip}:{self._port}\n')
         connection = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         connection.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        # connection.bind((self._ip, self._port))
-        connection.bind(('127.0.0.1', 1234))
+        connection.bind((self._ip, self._port))
+        #connection.bind(('127.0.0.1', 1234))
         connection.listen(10)
         full_msg = b''
         while True:
             current_connection, address = connection.accept()
-            current_connection.recv(21)
+            '''test = current_connection.recv(21)
+            with open('log.txt', 'a') as fw:
+                fw.write(f'{datetime.datetime.now()} - test: {test}\n')'''
             while True:
                 data = current_connection.recv(1000000)
+                with open('log.txt', 'a') as fw:
+                    fw.write(f'{datetime.datetime.now()} - {data}\n')
                 full_msg += data
                 if full_msg.find(b'\xff\xf8') > -1:
                     current_connection.shutdown(1)
@@ -105,10 +112,11 @@ class TaskQueueServer:
                     full_msg = b''
                     break
                 elif full_msg.endswith(b'\r\n'):
-                    print(len(full_msg))
-                    print(full_msg)
+                    # print(len(full_msg))
+                    # print(full_msg)
+                    result = self._get_command(full_msg).encode()
                     current_connection.send(self._get_command(full_msg).encode())
-                    current_connection.send('\n\r'.encode())
+                    #current_connection.send('\n\r'.encode())
                     full_msg = b''
 
 
